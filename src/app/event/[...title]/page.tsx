@@ -9,8 +9,7 @@ import { Video } from "@/components/VideoGrid";
 import { Watch } from "@/components/Watch";
 import { Chip, Loading, panel, SectionTitle, SubTitle } from "@/components/ui";
 import { dateRange, status, tierLabel } from "@/lib/format";
-import type { EventRef } from "@/lib/relevance";
-import { findWatchParties } from "@/lib/youtube";
+import { findWatchParties, type EventRef } from "@/lib/youtube";
 import { getBroadcast, getEventInfo, getEventStats, getStages, getTeamGroups, withLogos } from "@/lib/liquipedia";
 
 export const instant = false; // data is fetched from Liquipedia per request

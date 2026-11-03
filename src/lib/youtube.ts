@@ -2,6 +2,7 @@
 // the videos that are really about one tournament: watch parties, co-streams and live streams.
 const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36";
 
+export type EventRef = { name: string; abbr?: string; year?: string };
 export type YtVideo = { id: string; title: string; channel: string; meta: string; live: boolean };
 
 type Node = Record<string, unknown>;
@@ -60,7 +61,7 @@ const PARTY = /watch ?party|watch ?along|co ?stream|reaction|reacting|commentary
 
 // Watch parties of one event. A video is kept only if its title names the event (its short name such as "BMIC", or the
 // full name) and does not carry a different year; unless the event is running and the video is live, it must also say it is a watch party / co-stream.
-export async function findWatchParties(e: { name: string; abbr?: string; year?: string }, live: boolean): Promise<YtVideo[]> {
+export async function findWatchParties(e: EventRef, live: boolean): Promise<YtVideo[]> {
   const abbr = e.abbr ? norm(e.abbr) : "";
   const full = norm(e.name);
   const label = abbr ? `${abbr}${e.year ? " " + e.year : ""}` : e.name;
