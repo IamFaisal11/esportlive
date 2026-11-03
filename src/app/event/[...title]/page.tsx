@@ -73,7 +73,6 @@ async function WatchSection({ page, name }: { page: string; name: string }) {
       streams={bc.streams}
       vods={bc.vods}
       state={state}
-      event={event}
       parties={<Suspense fallback={<Loading label="watch parties" />}><Parties event={event} live={state === "live"} /></Suspense>}
     />
   );
