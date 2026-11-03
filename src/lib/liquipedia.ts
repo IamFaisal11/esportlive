@@ -138,12 +138,17 @@ function api(params: string, ttl = TTL): Promise<any> {
   queue = new Promise((r) => (done = r));
   const data = (async () => {
     await turn;
+    const started = performance.now();
+    let upstream = true;
     try {
-      const res = await fetch(`${API}?format=json&formatversion=2&${params}`, { headers: { "User-Agent": UA, "Accept-Encoding": "gzip" }, next: { revalidate: Math.min(300, ttl / 1000) } });
+      // Next's data cache keeps each answer for the TTL and serves it stale while refreshing in the background.
+      const res = await fetch(`${API}?format=json&formatversion=2&${params}`, { headers: { "User-Agent": UA, "Accept-Encoding": "gzip" }, next: { revalidate: ttl / 1000 } });
+      // An answer that came back this fast was served from the cache, not from Liquipedia, so it needs no politeness gap.
+      upstream = performance.now() - started > 150;
       if (!res.ok) throw new Error(`Liquipedia API ${res.status}`);
       return await res.json();
     } finally {
-      setTimeout(done, GAP);
+      setTimeout(done, upstream ? GAP : 0);
     }
   })();
   cache.set(params, { at: performance.now(), data }); // performance.now(): Date.now() is rejected while Next prerenders

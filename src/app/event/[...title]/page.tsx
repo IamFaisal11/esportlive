@@ -5,11 +5,11 @@ import { LiveRefresh } from "@/components/LiveRefresh";
 import { Statistics } from "@/components/Statistics";
 import { TeamCards } from "@/components/TeamCards";
 import { TeamStatsTable } from "@/components/TeamStatsTable";
-import { Video } from "@/components/VideoGrid";
 import { Watch } from "@/components/Watch";
+import { WatchParties } from "@/components/WatchParties";
 import { Chip, Loading, panel, SectionTitle, SubTitle } from "@/components/ui";
 import { dateRange, status, tierLabel } from "@/lib/format";
-import { findWatchParties, type EventRef } from "@/lib/youtube";
+import type { EventRef } from "@/lib/youtube";
 import { getBroadcast, getEventInfo, getEventStats, getStages, getTeamGroups, withLogos } from "@/lib/liquipedia";
 
 export const instant = false; // data is fetched from Liquipedia per request
@@ -72,20 +72,8 @@ async function WatchSection({ page, name }: { page: string; name: string }) {
       streams={bc.streams}
       vods={bc.vods}
       state={state}
-      parties={<Suspense fallback={<Loading label="watch parties" />}><Parties event={event} live={state === "live"} /></Suspense>}
+      parties={<WatchParties name={event.name} abbr={event.abbr} year={event.year} live={state === "live"} />}
     />
-  );
-}
-
-// Found automatically (YouTube search, filtered to videos that name this event), so nobody has to search.
-async function Parties({ event, live }: { event: EventRef; live: boolean }) {
-  const videos = await findWatchParties(event, live);
-  if (videos.length === 0)
-    return <p className={`${panel} p-5 text-sm text-zinc-400`}>No watch parties found for this event yet. They usually appear once the broadcast starts.</p>;
-  return (
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      {videos.map((v) => <Video key={v.id} id={v.id} url={`https://www.youtube.com/watch?v=${v.id}`} title={v.title} sub={[v.channel, v.meta].filter(Boolean).join(" · ")} live={v.live} />)}
-    </div>
   );
 }
 

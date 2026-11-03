@@ -34,7 +34,7 @@ export async function GET(req: Request) {
     });
     const body = { channel: decode(xml.match(/<title>([^<]*)/)?.[1] ?? handle), channelId, guessed: !q.startsWith("@"), videos };
     cache.set(key, { at: performance.now(), body });
-    return NextResponse.json(body);
+    return NextResponse.json(body, { headers: { "Cache-Control": "public, s-maxage=600, stale-while-revalidate=3600" } });
   } catch {
     return NextResponse.json({ error: "Couldn't reach YouTube" }, { status: 502 });
   }
