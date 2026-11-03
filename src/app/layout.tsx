@@ -23,6 +23,10 @@ const Logo = () => (
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="en" className={`${display.variable} ${body.variable} h-full antialiased`}>
+      <head>
+        {/* Google AdSense: the publisher script (also used to verify the site) */}
+        <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4653800983430354" crossOrigin="anonymous" />
+      </head>
       <body className="relative min-h-full bg-[#09090b] font-[family-name:var(--font-body)] text-zinc-100">
         {/* Soft accent glow plus a faint grid that fades out down the page */}
         <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[34rem] [background-image:radial-gradient(ellipse_70%_60%_at_50%_-10%,rgba(249,115,22,0.20),transparent),linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] [background-size:auto,48px_48px,48px_48px] [mask-image:linear-gradient(to_bottom,black,transparent)]" />
@@ -44,11 +48,18 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <main className="fade-up mx-auto max-w-6xl px-4 py-8">{children}</main>
 
         <footer className="mt-16 border-t border-white/5">
-          <div className="mx-auto flex max-w-6xl flex-col gap-2 px-4 py-8 text-xs text-zinc-500 sm:flex-row sm:items-center sm:justify-between">
-            <p>
-              Data from <a className="text-zinc-400 underline hover:text-orange-400" href="https://liquipedia.net/pubgmobile">Liquipedia</a> (CC-BY-SA 3.0).
-            </p>
-            <p>Esportlive is an independent fan project, not affiliated with Krafton or Tencent.</p>
+          <div className="mx-auto flex max-w-6xl flex-col gap-5 px-4 py-8 text-xs text-zinc-500 sm:flex-row sm:items-center sm:justify-between">
+            <div className="space-y-1">
+              <p>
+                Data from <a className="text-zinc-400 underline hover:text-orange-400" href="https://liquipedia.net/pubgmobile">Liquipedia</a> (CC-BY-SA 3.0).
+              </p>
+              <p>Esportlive is an independent fan project, not affiliated with Krafton or Tencent.</p>
+            </div>
+            <nav aria-label="Footer" className="flex flex-wrap gap-x-6 gap-y-2 text-sm text-zinc-400">
+              <Link href="/about" className="transition hover:text-white">About</Link>
+              <Link href="/privacy" className="transition hover:text-white">Privacy Policy</Link>
+              <Link href="/contact" className="transition hover:text-white">Contact</Link>
+            </nav>
           </div>
         </footer>
       </body>

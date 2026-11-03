@@ -1,6 +1,5 @@
 import Image from "next/image";
 import Link from "next/link";
-import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { getPlayerPhotos, getTeam, getTeamHistory } from "@/lib/liquipedia";
 import { ResultsTable } from "@/components/ResultsTable";
@@ -121,10 +120,27 @@ async function History({ title, fallback }: { title: string; fallback: RosterMem
   );
 }
 
+// Some teams (small league sides) have no Liquipedia page; say so instead of showing an error.
+function TeamMissing({ name }: { name: string }) {
+  return (
+    <>
+      <Link href="/" className="mb-4 inline-flex items-center gap-1 text-sm text-zinc-500 transition hover:text-orange-400">← All tournaments</Link>
+      <header className="relative mb-6 overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-orange-500/15 via-white/[0.03] to-transparent p-6 sm:p-8">
+        <div className="mb-3"><Chip>Team</Chip></div>
+        <h1 className="font-[family-name:var(--font-display)] text-4xl font-bold leading-tight tracking-wide sm:text-5xl">{name}</h1>
+      </header>
+      <p className={`${card} text-zinc-400`}>
+        Liquipedia doesn&apos;t have a page for this team yet, so there is no roster, history or results to show here.{" "}
+        <a className="text-orange-400 underline" href={`https://liquipedia.net/pubgmobile/index.php?search=${encodeURIComponent(name)}`} target="_blank" rel="noopener noreferrer">Search Liquipedia ↗</a>
+      </p>
+    </>
+  );
+}
+
 export default async function TeamPage(props: PageProps<"/team/[key]">) {
   const { key } = await props.params;
   const team = await getTeam(decodeURIComponent(key));
-  if (!team) notFound();
+  if (!team) return <TeamMissing name={decodeURIComponent(key)} />;
   const details = Object.entries(labels).filter(([k]) => team.fields[k]);
   const links = Object.entries(socials).filter(([k]) => team.fields[k]);
   const fallback: RosterMember[] = team.roster.map((p) => ({ id: p.id, name: p.name, role: p.role }));

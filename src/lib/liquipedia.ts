@@ -204,9 +204,20 @@ const clean = (v?: string) =>
     .trim();
 
 // Resolves a lowercase Liquipedia key (like "team aryan") to the real page, then reads infobox + active roster.
-export async function getTeam(key: string): Promise<Team | null> {
+// Liquipedia's own team template knows which page a team key belongs to ({{Team|versus}} -> [[Versus]]). A text search
+// is the fallback, but it can pick the wrong page: "versus" finds "Versus Programming Network" first.
+async function teamPageTitle(key: string): Promise<string | undefined> {
+  if (/^[\p{L}\p{N} .'&()-]+$/u.test(key)) {
+    const out = await expand("Main Page", `{{Team|${key}}}`);
+    const link = out.match(/\[\[(?!File:)([^\]|]+)/)?.[1]?.trim();
+    if (link) return link;
+  }
   const search = await api(`action=opensearch&limit=1&namespace=0&search=${encodeURIComponent(key)}`);
-  const title: string | undefined = search[1]?.[0];
+  return search[1]?.[0];
+}
+
+export async function getTeam(key: string): Promise<Team | null> {
+  const title = await teamPageTitle(key);
   if (!title) return null;
   const data = await api(`action=query&redirects=1&prop=revisions&rvprop=content&rvslots=main&titles=${encodeURIComponent(title)}`);
   const page = data.query.pages[0];
