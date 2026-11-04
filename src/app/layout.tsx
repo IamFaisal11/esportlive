@@ -9,6 +9,9 @@ const body = Inter({ subsets: ["latin"], variable: "--font-body" });
 export const metadata: Metadata = {
   title: { default: "Esportlive", template: "%s · Esportlive" },
   description: "BGMI and PUBG Mobile esports tournaments, standings, teams and players",
+  other: {
+    "google-adsense-account": "ca-pub-7470745732799601",
+  },
 };
 
 // A signal / crosshair style mark in the accent colour.
@@ -24,8 +27,13 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="en" className={`${display.variable} ${body.variable} h-full antialiased`}>
       <head>
+        <meta name="google-adsense-account" content="ca-pub-7470745732799601" />
         {/* Google AdSense: the publisher script (also used to verify the site) */}
-        <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4653800983430354" crossOrigin="anonymous" />
+        <script
+          async
+          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-7470745732799601"
+          crossOrigin="anonymous"
+        />
       </head>
       <body className="relative min-h-full bg-[#09090b] font-[family-name:var(--font-body)] text-zinc-100">
         {/* Soft accent glow plus a faint grid that fades out down the page */}
