@@ -60,7 +60,7 @@ async function List({ searchParams }: { searchParams: Promise<Record<string, str
       <div className="mb-6 flex flex-wrap items-center gap-2">
         {["BGMI", "PUBG Mobile"].map((g) => <Link key={g} href={href("game", g)} className={chip(f.game === g)}>{g}</Link>)}
         <span className="mx-1 hidden h-6 w-px bg-white/10 sm:block" />
-        {["1", "2"].map((t) => <Link key={t} href={href("tier", t)} className={chip(f.tier === t)}>{tierLabel(t)}</Link>)}
+        {["1", "2", "3"].map((t) => <Link key={t} href={href("tier", t)} className={chip(f.tier === t)}>{tierLabel(t)}</Link>)}
         <span className="mx-1 hidden h-6 w-px bg-white/10 sm:block" />
         {years.map((y) => <Link key={y} href={href("year", y)} className={chip(f.year === y)}>{y}</Link>)}
       </div>

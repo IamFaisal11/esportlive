@@ -45,11 +45,28 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
               <Logo />
               <span>ESPORT<span className="text-orange-500">LIVE</span></span>
             </Link>
-            <nav className="flex items-center gap-5 text-sm text-zinc-400">
-              <Link href="/" className="transition hover:text-white">Tournaments</Link>
-              <Link href="/?game=BGMI" className="hidden transition hover:text-white sm:block">BGMI</Link>
-              <Link href="/?game=PUBG+Mobile" className="hidden transition hover:text-white sm:block">PUBG Mobile</Link>
-            </nav>
+            <div className="flex items-center gap-4 sm:gap-6">
+              <nav aria-label="Main" className="flex items-center gap-4 text-sm text-zinc-400 sm:gap-6">
+                <Link href="/" className="transition hover:text-white">Tournaments</Link>
+                <Link href="/rankings" className="transition hover:text-white">Rankings</Link>
+                <Link href="/news" className="transition hover:text-white">News</Link>
+              </nav>
+              <form action="/search" role="search" className="relative hidden md:block">
+                <input
+                  name="q"
+                  type="search"
+                  required
+                  minLength={2}
+                  aria-label="Search tournaments, teams and players"
+                  placeholder="Search teams, players, events…"
+                  className="w-52 rounded-full border border-white/10 bg-white/5 py-1.5 pl-9 pr-3 text-sm outline-none transition placeholder:text-zinc-500 focus:border-orange-500 lg:w-72"
+                />
+                <svg viewBox="0 0 24 24" className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-zinc-500" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
+              </form>
+              <Link href="/search" aria-label="Search" className="text-zinc-400 transition hover:text-white md:hidden">
+                <svg viewBox="0 0 24 24" className="size-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
+              </Link>
+            </div>
           </div>
         </header>
 

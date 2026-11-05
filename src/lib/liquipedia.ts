@@ -60,10 +60,18 @@ export async function getEventInfo(title: string): Promise<Tournament | null> {
 // Discovers events from Liquipedia's tier index pages, then reads each event's infobox.
 export async function getTournaments(): Promise<Tournament[]> {
   const titles = new Set<string>();
-  for (const tier of ["S", "A"]) {
+  // The tier index page an event is listed on decides its tier: an infobox can disagree (Chennai 2026 is on the B-Tier page).
+  const tierOf = new Map<string, string>();
+  // S and A tier events of every year, plus B-tier events of the last two years (B-tier has hundreds of older ones).
+  for (const tier of ["S", "A", "B"]) {
     const d = await api(`action=query&prop=links&pllimit=500&plnamespace=0&titles=${tier}-Tier_Tournaments`);
-    for (const l of (d.query.pages[0].links ?? []) as { title: string }[])
-      if (/\/20\d\d(\/Season \d)?$/.test(l.title) && !l.title.includes("Tier Tournaments")) titles.add(l.title);
+    for (const l of (d.query.pages[0].links ?? []) as { title: string }[]) {
+      const year = Number(l.title.match(/\/(20\d\d)(?:\/Season \d)?$/)?.[1]);
+      if (year && !l.title.includes("Tier Tournaments") && (tier !== "B" || year >= 2025)) {
+        titles.add(l.title);
+        if (!tierOf.has(l.title)) tierOf.set(l.title, { S: "1", A: "2", B: "3" }[tier]!);
+      }
+    }
   }
   const all = [...titles];
   const out: Tournament[] = [];
@@ -71,7 +79,8 @@ export async function getTournaments(): Promise<Tournament[]> {
     const data = await api(`action=query&prop=revisions&rvprop=content&rvslots=main&titles=${encodeURIComponent(all.slice(i, i + 50).join("|"))}`);
     for (const p of data.query.pages as { title: string; missing?: boolean; revisions?: { slots: { main: { content: string } } }[] }[]) {
       if (p.missing || !p.revisions) continue;
-      out.push(toTournament(p.title, p.revisions[0].slots.main.content));
+      const t = toTournament(p.title, p.revisions[0].slots.main.content);
+      out.push({ ...t, tier: tierOf.get(p.title) ?? t.tier });
     }
   }
   const urls = await fileUrls(out.flatMap((t) => (t.logoFile ? [t.logoFile] : [])));
@@ -446,4 +455,53 @@ export async function getPlayerPhotos(pages: string[]): Promise<Record<string, s
 export async function getBroadcast(title: string): Promise<{ streams: Broadcast[]; vods: Vod[] }> {
   const text = (await eventPages(title)).get(title) ?? "";
   return { streams: parseStreams(text), vods: parseVods(text) };
+}
+
+export type SearchHit = { kind: "tournament" | "team" | "player"; title: string; sub: string };
+
+// Wiki-wide search: title-prefix matches plus full-text matches, each classified by its infobox (one call for all of them).
+export async function searchSite(q: string): Promise<SearchHit[]> {
+  const term = q.trim().slice(0, 80);
+  if (term.length < 2) return [];
+  const enc = encodeURIComponent(term);
+  const [pre, full] = await Promise.all([
+    api(`action=query&list=prefixsearch&pssearch=${enc}&pslimit=10&psnamespace=0`),
+    api(`action=query&list=search&srsearch=${enc}&srnamespace=0&srlimit=15&srprop=`),
+  ]);
+  const titles = [...new Set([...(pre.query.prefixsearch ?? []), ...(full.query.search ?? [])].map((p: { title: string }) => p.title))]
+    .filter((t) => !/\/(Results|Statistics)(\/|$)/.test(t))
+    .slice(0, 25);
+  if (!titles.length) return [];
+  const data = await api(`action=query&prop=revisions&rvprop=content&rvslots=main&rvsection=0&titles=${encodeURIComponent(titles.join("|"))}`);
+  const text = new Map((data.query.pages as Page[]).map((p) => [p.title, (p.revisions?.[0].slots.main.content ?? "").replace(/<!--[\s\S]*?-->/g, "")]));
+  const hits: SearchHit[] = [];
+  for (const title of titles) {
+    const t = text.get(title) ?? "";
+    // value of |key=... inside the infobox that starts at `box` (a plain string, so the backslashes are doubled)
+    const field = (box: string, key: string) => t.slice(Math.max(0, t.indexOf(box))).match(new RegExp("\\|" + key + "=([^\\n|]*)"))?.[1]?.trim() ?? "";
+    if (t.includes("{{Infobox league")) {
+      const dates = [field("Infobox league", "sdate"), field("Infobox league", "edate")].filter(Boolean).join(" → ");
+      hits.push({ kind: "tournament", title, sub: [dates, field("Infobox league", "country")].filter(Boolean).join(" · ") });
+    } else if (t.includes("{{Infobox team")) {
+      hits.push({ kind: "team", title, sub: [field("Infobox team", "location"), field("Infobox team", "region")].filter(Boolean).join(" · ") });
+    } else if (t.includes("{{Infobox player")) {
+      hits.push({ kind: "player", title, sub: [field("Infobox player", "country"), field("Infobox player", "role")].filter(Boolean).join(" · ") });
+    }
+  }
+  return hits;
+}
+
+// Proper display names for team keys, from Liquipedia's own team template ("godl" -> "GodLike Esports"), in one call.
+export async function teamLabels(keys: string[]): Promise<Map<string, string>> {
+  const safe = keys.filter((k) => /^[\p{L}\p{N} .'&()-]+$/u.test(k));
+  const out = new Map<string, string>();
+  if (!safe.length) return out;
+  const SPLIT = "@@SPLIT@@";
+  const text = await expand("Main Page", safe.map((k) => `{{Team|${k}}}`).join(SPLIT));
+  text.split(SPLIT).forEach((part, i) => {
+    const m = part.match(/\[\[(?!File:)([^\]|]+)(?:\|([^\]]*))?\]\]/);
+    const label = (m?.[2] || m?.[1] || "").trim();
+    if (label && safe[i]) out.set(safe[i], label);
+  });
+  return out;
 }
