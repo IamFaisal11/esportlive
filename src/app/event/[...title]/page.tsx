@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { connection } from "next/server";
 import { Suspense } from "react";
+import { StatusChip } from "@/components/StatusChip";
 import { LiveRefresh } from "@/components/LiveRefresh";
 import { Statistics } from "@/components/Statistics";
 import { TeamCards } from "@/components/TeamCards";
@@ -8,13 +9,12 @@ import { TeamStatsTable } from "@/components/TeamStatsTable";
 import { Watch } from "@/components/Watch";
 import { WatchParties } from "@/components/WatchParties";
 import { Chip, Loading, panel, SectionTitle, SubTitle } from "@/components/ui";
-import { dateRange, status, tierLabel } from "@/lib/format";
+import { dateRange, startsWithin, status, tierLabel } from "@/lib/format";
 import type { EventRef } from "@/lib/youtube";
 import { getBroadcast, getEventInfo, getEventStats, getStages, getTeamGroups, withLogos } from "@/lib/liquipedia";
 
 export const instant = false; // data is fetched from Liquipedia per request
 
-const tone = { live: "red", upcoming: "blue", finished: "neutral" } as const;
 const navLink = "rounded-full px-3.5 py-1.5 text-sm text-zinc-300 transition hover:bg-white/10 hover:text-white";
 
 // Title shows at once; the facts (dates, prize pool, location...) join in when the event page has loaded.
@@ -28,10 +28,11 @@ function Hero({ name, info }: { name: string; info?: Awaited<ReturnType<typeof g
           {info && <Chip tone={info.game === "BGMI" ? "green" : "amber"}>{info.game}</Chip>}
           {info?.tier && <Chip>{tierLabel(info.tier)}</Chip>}
           {st && (
-            <Chip tone={tone[st]}>
-              {st === "live" && <span className="size-1.5 animate-pulse rounded-full bg-red-400" />}
-              {st}
-            </Chip>
+            <StatusChip
+              st={st}
+              title={name}
+              check={st === "upcoming" && info?.start && startsWithin(info.start, 45) ? { name: info.name, ...(info.abbr ? { abbr: info.abbr } : {}), year: (name.match(/20\d\d/)?.[0] ?? info.start.slice(0, 4)) } : undefined}
+            />
           )}
         </div>
         <h1 className="font-[family-name:var(--font-display)] text-4xl font-bold leading-tight tracking-wide sm:text-5xl">{name}</h1>
@@ -62,17 +63,38 @@ async function HeroWithInfo({ page, name }: { page: string; name: string }) {
   return <Hero name={name} info={await getEventInfo(page)} />;
 }
 
+// eSportsAmaze keeps live scores for BGMI events; we only link to its page (its terms allow linking, not copying), and only if it exists.
+async function amazeUrl(name: string) {
+  const url = `https://esportsamaze.com/bgmi/tournaments/${name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}`;
+  const ok = await fetch(url, { method: "HEAD", signal: AbortSignal.timeout(2500), next: { revalidate: 3600 } }).then((r) => r.ok, () => false);
+  return ok ? url : undefined;
+}
+
+const KICK_ORGANIZERS: Record<string, string> = { skyesports: "skyesports" };
+
 async function WatchSection({ page, name }: { page: string; name: string }) {
   await connection(); // live / upcoming / finished depends on the current time
   const [info, bc] = await Promise.all([getEventInfo(page), getBroadcast(page)]);
   const state = info ? status(info.start, info.end) : "upcoming";
   const event: EventRef = { name: info?.name ?? name, abbr: info?.abbr, year: name.match(/\b20\d\d\b/)?.[0] ?? info?.start?.slice(0, 4) };
+  // Liquipedia often lists only the finals dates, so an event starting soon may already be on air
+  const started = state === "upcoming" && !!info?.start && startsWithin(info.start, 45);
+  // Kick channels: the ones Liquipedia lists, plus organisers known to stream there (Kick has no search we can use)
+  const organizer = (info?.organizer ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  const kick = [...new Set([
+    ...bc.streams.flatMap((b) => b.channels.filter((c) => c.platform === "kick" && c.direct && /^[\w-]+$/.test(c.name)).map((c) => c.name)),
+    ...((state === "live" || started) && KICK_ORGANIZERS[organizer] ? [KICK_ORGANIZERS[organizer]] : []),
+  ])];
+  const scores = state !== "finished" && info?.game === "BGMI" ? await amazeUrl(event.name) : undefined;
   return (
     <Watch
       streams={bc.streams}
       vods={bc.vods}
       state={state}
-      parties={<WatchParties name={event.name} abbr={event.abbr} year={event.year} live={state === "live"} />}
+      parties={<WatchParties name={event.name} abbr={event.abbr} year={event.year} live={state === "live" || started} />}
+      kick={state === "finished" ? undefined : kick}
+      scores={scores}
+      check={started ? { name: event.name, ...(event.abbr ? { abbr: event.abbr } : {}), ...(event.year ? { year: event.year } : {}) } : undefined}
     />
   );
 }
@@ -128,7 +150,7 @@ export default async function EventPage(props: PageProps<"/event/[...title]">) {
         <HeroWithInfo page={page} name={name} />
       </Suspense>
 
-      <nav className="sticky top-14 z-10 -mx-4 mb-2 mt-6 flex gap-1 overflow-x-auto border-b border-white/5 bg-[#09090b]/85 px-4 py-2 backdrop-blur-md" aria-label="Sections">
+      <nav className="sticky top-14 z-10 -mx-4 mb-2 mt-6 flex gap-1 overflow-x-auto border-b border-white/5 bg-background/95 px-4 py-2 backdrop-blur-md" aria-label="Sections">
         <a href="#watch" className={navLink}>Watch</a>
         <a href="#standings" className={navLink}>Team standings</a>
         <a href="#statistics" className={navLink}>Statistics</a>

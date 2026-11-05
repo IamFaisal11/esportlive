@@ -26,7 +26,7 @@ export type Tournament = {
 
 // Pulls `|key=value` pairs out of the {{Infobox league ...}} template.
 function infobox(wikitext: string) {
-  const body = wikitext.match(/\{\{Infobox league([\s\S]*?)\n\}\}/)?.[1] ?? "";
+  const body = (wikitext.match(/\{\{Infobox league([\s\S]*?)\n\}\}/)?.[1] ?? "").replace(/<!--[\s\S]*?-->/g, "");
   const out: Record<string, string> = {};
   for (const m of body.matchAll(/\|([a-z_0-9]+)=([^\n|]*)/g)) out[m[1]] = m[2].trim();
   return out;
@@ -46,7 +46,7 @@ function toTournament(title: string, wikitext: string): Tournament {
     teams: f.team_number,
     abbr: f.abbreviation || f.tickername?.split(" ")[0],
     logoFile: f.imagedark || f.imagedarkmode || f.image || undefined, // dark-theme logo first: the site is dark
-    game: /Battlegrounds Mobile India|BGMI/.test(title) ? "BGMI" : "PUBG Mobile",
+    game: f.game?.toLowerCase() === "bgmi" || /Battlegrounds Mobile India|BGMI/.test(title) ? "BGMI" : "PUBG Mobile",
     url: `https://liquipedia.net/pubgmobile/${title.replaceAll(" ", "_")}`,
   };
 }
@@ -491,17 +491,45 @@ export async function searchSite(q: string): Promise<SearchHit[]> {
   return hits;
 }
 
-// Proper display names for team keys, from Liquipedia's own team template ("godl" -> "GodLike Esports"), in one call.
-export async function teamLabels(keys: string[]): Promise<Map<string, string>> {
-  const safe = keys.filter((k) => /^[\p{L}\p{N} .'&()-]+$/u.test(k));
+
+// Raw wikitext and last-edit time of several pages in one call (used for Liquipedia's points / leaderboard pages).
+export async function getWikiPages(titles: string[]): Promise<Map<string, { text: string; edited: string }>> {
+  type P = { title: string; missing?: boolean; revisions?: { timestamp: string; slots: { main: { content: string } } }[] };
+  const data = await api(`action=query&prop=revisions&rvprop=content|timestamp&rvslots=main&titles=${encodeURIComponent(titles.join("|"))}`);
+  return new Map(
+    (data.query.pages as P[]).filter((p) => !p.missing && p.revisions).map((p) => [p.title, { text: p.revisions![0].slots.main.content, edited: p.revisions![0].timestamp }]),
+  );
+}
+
+// Proper names for template keys ({{Team|godl}} -> "GodLike Esports", {{Player|nakul}} -> "NakuL"), all in one call.
+export async function wikiLabels(template: "Team" | "Player", keys: string[]): Promise<Map<string, string>> {
+  const safe = [...new Set(keys)].filter((k) => /^[\p{L}\p{N} .'&()_-]+$/u.test(k));
   const out = new Map<string, string>();
   if (!safe.length) return out;
   const SPLIT = "@@SPLIT@@";
-  const text = await expand("Main Page", safe.map((k) => `{{Team|${k}}}`).join(SPLIT));
+  const text = await expand("Main Page", safe.map((k) => `{{${template}|${k}}}`).join(SPLIT));
   text.split(SPLIT).forEach((part, i) => {
     const m = part.match(/\[\[(?!File:)([^\]|]+)(?:\|([^\]]*))?\]\]/);
     const label = (m?.[2] || m?.[1] || "").trim();
     if (label && safe[i]) out.set(safe[i], label);
   });
+  return out;
+}
+
+// Team logos by key through Liquipedia's team-icon template (dark-theme file first), one call plus one for the URLs.
+export async function teamLogos(keys: string[]): Promise<Map<string, string>> {
+  const safe = [...new Set(keys)].filter((k) => /^[\p{L}\p{N} .'&()_-]+$/u.test(k));
+  const out = new Map<string, string>();
+  if (!safe.length) return out;
+  const SPLIT = "@@SPLIT@@";
+  const text = await expand("Main Page", safe.map((k) => `{{TeamIcon|${k}}}`).join(SPLIT));
+  const mode = (f: string) => (/darkmode/i.test(f) ? 0 : /allmode/i.test(f) ? 1 : 2);
+  const fileOf = new Map<string, string>();
+  text.split(SPLIT).forEach((part, i) => {
+    const f = [...part.matchAll(/\[\[File:([^|\]]+)/g)].map((m) => m[1].trim()).filter((x) => !/default/i.test(x)).sort((a, b) => mode(a) - mode(b))[0];
+    if (f && safe[i]) fileOf.set(safe[i], f);
+  });
+  const urls = await fileUrls([...fileOf.values()]);
+  for (const [k, f] of fileOf) if (urls.has(f)) out.set(k, urls.get(f)!);
   return out;
 }

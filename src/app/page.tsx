@@ -2,8 +2,10 @@ import Image from "next/image";
 import Link from "next/link";
 import { connection } from "next/server";
 import { Suspense } from "react";
+import { LiveDetect, type Candidate } from "@/components/LiveDetect";
+import { StatusChip } from "@/components/StatusChip";
 import { Chip, Stat } from "@/components/ui";
-import { dateRange, status, tierLabel } from "@/lib/format";
+import { dateRange, startsWithin, status, tierLabel } from "@/lib/format";
 import { getTournaments } from "@/lib/liquipedia";
 
 export const instant = false; // allow a blocking render: the list is fetched and time-dependent
@@ -13,7 +15,6 @@ const chip = (on: boolean) =>
 
 const PAGE_SIZE = 9; // three rows of three cards
 
-const tone = { live: "red", upcoming: "blue", finished: "neutral" } as const;
 const money = (n: number) => (n >= 1e6 ? `$${(n / 1e6).toFixed(1)}M` : `$${Math.round(n / 1e3)}K`);
 
 async function List({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
@@ -23,6 +24,15 @@ async function List({ searchParams }: { searchParams: Promise<Record<string, str
   const all = await getTournaments();
   const years = [...new Set(all.map((t) => (t.end ?? t.start ?? "").slice(0, 4)).filter(Boolean))].sort().reverse();
   const f = { game: pick("game"), tier: pick("tier"), year: pick("year") };
+  const isLive = (t: (typeof all)[number]) => status(t.start, t.end) === "live";
+  const live = all.filter(isLive);
+  const next = all.filter((t) => status(t.start, t.end) === "upcoming" && t.start).sort((a, b) => (a.start ?? "").localeCompare(b.start ?? ""))[0];
+  // Events starting within 45 days (or a few days ago): checked for a live stream in the browser
+  const candidates: Candidate[] = all
+    .filter((t) => t.start && status(t.start, t.end) === "upcoming" && startsWithin(t.start, 45))
+    .sort((a, b) => a.start!.localeCompare(b.start!))
+    .slice(0, 6)
+    .map((t) => ({ title: t.title, name: t.name, abbr: t.abbr, year: t.start!.slice(0, 4), logo: t.logo }));
   const shown = all.filter(
     (t) =>
       (!f.game || t.game === f.game) &&
@@ -34,6 +44,7 @@ async function List({ searchParams }: { searchParams: Promise<Record<string, str
     const q = new URLSearchParams(Object.entries({ ...f, [k]: f[k] === v ? "" : v }).filter(([, x]) => x));
     return `/?${q}`;
   };
+  shown.sort((a, b) => Number(isLive(b)) - Number(isLive(a))); // live events first
   const pages = Math.max(1, Math.ceil(shown.length / PAGE_SIZE));
   const current = Math.min(Math.max(1, Number(pick("page")) || 1), pages);
   const visible = shown.slice((current - 1) * PAGE_SIZE, current * PAGE_SIZE);
@@ -50,6 +61,31 @@ async function List({ searchParams }: { searchParams: Promise<Record<string, str
 
   return (
     <>
+      <LiveDetect candidates={live.length ? [] : candidates}>
+        {live.length > 0 ? (
+          <section aria-label="Live now" className="mb-6 rounded-xl border border-red-500/40 bg-gradient-to-r from-red-500/15 to-transparent p-4">
+            <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-red-400">
+              <span className="size-2.5 animate-pulse rounded-full bg-red-500 ring-4 ring-red-500/25" />
+              Live now
+            </h2>
+            <div className="flex flex-wrap gap-2">
+              {live.map((t) => (
+                <Link key={t.title} href={`/event/${t.title.replaceAll(" ", "_")}`} className="flex items-center gap-2.5 rounded-lg border border-red-500/30 bg-white/5 px-3 py-2 text-sm font-medium transition hover:border-red-400">
+                  {t.logo && <Image src={t.logo} alt="" width={28} height={28} unoptimized={t.logo.endsWith(".svg")} className="logo-plate size-7 rounded object-contain p-0.5" />}
+                  {t.name}
+                  <span className="rounded bg-red-500 px-1.5 py-0.5 text-[10px] font-bold uppercase text-white">Live</span>
+                </Link>
+              ))}
+            </div>
+          </section>
+        ) : (
+          next && (
+            <p className="mb-6 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-zinc-400">
+              No tournament is live right now. Next up: <Link href={`/event/${next.title.replaceAll(" ", "_")}`} className="font-medium text-orange-400 hover:underline">{next.name}</Link> starts {dateRange(next.start, next.start).split(" – ")[0]}.
+            </p>
+          )
+        )}
+      </LiveDetect>
       <dl className="mb-8 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Stat label="Tournaments" value={shown.length} />
         <Stat label="Live now" value={count("live")} accent />
@@ -80,14 +116,11 @@ async function List({ searchParams }: { searchParams: Promise<Record<string, str
               <span className={`absolute inset-x-0 top-0 h-0.5 ${bgmi ? "bg-emerald-400" : "bg-amber-400"} opacity-70`} />
               <div className="flex items-center justify-between">
                 <Chip tone={bgmi ? "green" : "amber"}>{t.game}</Chip>
-                <Chip tone={tone[st]}>
-                  {st === "live" && <span className="size-1.5 animate-pulse rounded-full bg-red-400" />}
-                  {st}
-                </Chip>
+                <StatusChip st={st} title={t.title} />
               </div>
               <div className="flex min-h-0 flex-1 items-center justify-center py-3">
                 {t.logo ? (
-                  <Image src={t.logo} alt="" width={200} height={120} unoptimized={t.logo.endsWith(".svg")} className="max-h-28 w-auto max-w-[80%] object-contain transition duration-300 group-hover:scale-105" />
+                  <Image src={t.logo} alt="" width={200} height={120} unoptimized={t.logo.endsWith(".svg")} className="logo-plate max-h-28 w-auto max-w-[80%] rounded-xl object-contain p-2 transition duration-300 group-hover:scale-105" />
                 ) : (
                   <span className="flex size-20 items-center justify-center rounded-2xl bg-white/10 font-[family-name:var(--font-display)] text-3xl font-bold text-zinc-500">
                     {t.name.split(" ").filter((w) => /^[A-Za-z]/.test(w)).slice(0, 2).map((w) => w[0]).join("").toUpperCase()}

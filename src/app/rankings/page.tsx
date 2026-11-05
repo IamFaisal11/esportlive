@@ -1,99 +1,208 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { connection } from "next/server";
+import Image from "next/image";
 import { Suspense } from "react";
-import { Loading, panel } from "@/components/ui";
-import { PLACE_POINTS, TIER_WEIGHT, getRankings } from "@/lib/rankings";
+import { Chip, Loading, panel } from "@/components/ui";
+import { teamLogos, wikiLabels } from "@/lib/liquipedia";
+import { getKie, getPmgcLatest, type PointsRow, type PointsTable } from "@/lib/rankings";
 
-export const instant = false; // rankings are calculated per request from the latest standings
-export const maxDuration = 60; // the first calculation reads many events from Liquipedia
+export const instant = false; // rankings are read from Liquipedia per request
+export const maxDuration = 30;
 
 export const metadata: Metadata = {
   title: "Rankings",
-  description: "Esportlive team rankings for BGMI and PUBG Mobile, calculated from the latest tournament results.",
+  description: "Official BGMI (KIE Global Leaderboard) and PUBG Mobile (PMGC points by region) rankings.",
 };
 
-const GAMES = [["BGMI", "BGMI"], ["PUBG Mobile", "PUBG Mobile"]] as const;
+const medal = ["bg-yellow-400 text-black", "bg-zinc-300 text-black", "bg-orange-700 text-white"];
 const chip = (on: boolean) =>
   `rounded-full border px-3.5 py-1.5 text-sm transition ${on ? "border-orange-500 bg-orange-500 font-semibold text-black" : "border-white/10 bg-white/5 text-zinc-300 hover:border-white/30 hover:text-white"}`;
-const medal = ["bg-yellow-400 text-black", "bg-zinc-300 text-black", "bg-orange-700 text-white"];
 const th = "p-3 text-xs font-medium uppercase tracking-wider text-zinc-500";
+const when = (iso: string) => new Date(iso).toLocaleDateString("en", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
 
-async function Table({ game }: { game: "BGMI" | "PUBG Mobile" }) {
-  await connection(); // "the last 12 months" depends on today's date
-  const { teams, events } = await getRankings(game);
-  if (teams.length === 0) return <p className={`${panel} p-6 text-zinc-400`}>Not enough finished events with readable results to rank {game} teams yet.</p>;
+type Row = { rank: number; key: string; name: string; href: string; logo?: string; region?: string; qualified?: boolean; row: PointsRow };
+
+function RankTable({ rows, rounds, showRegion }: { rows: Row[]; rounds: string[]; showRegion?: boolean }) {
+  return (
+    <div className="overflow-x-auto rounded-xl border border-white/10 bg-white/[0.03]">
+      <table className="w-full text-left text-sm">
+        <thead>
+          <tr className="border-b border-white/10">
+            <th className={`${th} pl-4`}>#</th>
+            <th className={th}>{showRegion !== undefined ? "Team" : "Name"}</th>
+            {showRegion && <th className={th}>Region</th>}
+            <th className={`${th} text-right`}>Points</th>
+            {rounds.map((r, i) => <th key={r + i} className={`${th} whitespace-nowrap text-right`}>{r}</th>)}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.rank + r.key + (r.region ?? "")} className="border-t border-white/5 hover:bg-white/5">
+              <td className="p-3 pl-4">
+                <span className={`inline-flex size-7 items-center justify-center rounded-full text-xs font-bold ${medal[r.rank - 1] ?? "text-zinc-500"}`}>{r.rank}</span>
+              </td>
+              <td className="p-3 font-medium">
+                <Link href={r.href} className="inline-flex items-center gap-3 hover:text-orange-400">
+                  {r.logo ? (
+                    <Image src={r.logo} alt="" width={28} height={28} unoptimized={r.logo.endsWith(".svg")} className="logo-plate size-7 shrink-0 rounded object-contain p-0.5" />
+                  ) : (
+                    <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-white/10 text-[10px] font-bold text-zinc-400">{r.name.slice(0, 2).toUpperCase()}</span>
+                  )}
+                  <span className="hover:underline">{r.name}</span>
+                </Link>
+                {r.qualified && <span className="ml-3 rounded bg-emerald-500/15 px-1.5 py-0.5 align-middle text-[10px] font-bold uppercase tracking-wider text-emerald-300">Qualified</span>}
+              </td>
+              {showRegion && <td className="p-3 text-zinc-400">{r.region}</td>}
+              <td className="p-3 text-right font-[family-name:var(--font-display)] text-lg font-bold text-orange-400">{r.row.total.toLocaleString("en")}</td>
+              {r.row.parts.map((p, i) => <td key={i} className="p-3 text-right text-zinc-500">{p === null ? "–" : p.toLocaleString("en")}</td>)}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// ---- BGMI: KIE Global Leaderboard ----
+async function KieBoard({ view }: { view: "teams" | "players" }) {
+  const kie = await getKie().catch(() => null);
+  const table = kie && (view === "players" ? kie.players : kie.teams);
+  if (!kie || !table) return <p className={`${panel} p-6 text-zinc-400`}>The KIE Global Leaderboard couldn&apos;t be loaded right now.</p>;
+
+  const top = table.rows.slice(0, 50);
+  const keys = top.map((r) => r.key);
+  const [names, logos] = await Promise.all([
+    wikiLabels(view === "players" ? "Player" : "Team", keys).catch(() => new Map<string, string>()),
+    view === "teams" ? teamLogos(keys).catch(() => new Map<string, string>()) : Promise.resolve(new Map<string, string>()),
+  ]);
+  const rows: Row[] = top.map((r, i) => {
+    const name = names.get(r.key) ?? r.key;
+    return { rank: i + 1, key: r.key, name, href: view === "players" ? `/player/${encodeURIComponent(name)}` : `/team/${encodeURIComponent(r.key)}`, logo: logos.get(r.key), row: r };
+  });
 
   return (
     <>
-      <div className="overflow-x-auto rounded-xl border border-white/10 bg-white/[0.03]">
-        <table className="w-full text-left text-sm">
-          <thead>
-            <tr className="border-b border-white/10">
-              <th className={`${th} pl-4`}>#</th><th className={th}>Team</th>
-              <th className={`${th} text-right`}>Points</th><th className={`${th} text-right`}>Events</th>
-              <th className={`${th} text-right`}>Titles</th><th className={`${th} text-right`}>Podiums</th><th className={`${th} pr-4 text-right`}>Best</th>
-            </tr>
-          </thead>
-          <tbody>
-            {teams.slice(0, 30).map((t, i) => (
-              <tr key={t.key} className="border-t border-white/5 hover:bg-white/5">
-                <td className="p-3 pl-4">
-                  <span className={`inline-flex size-6 items-center justify-center rounded-full text-xs font-bold ${medal[i] ?? "text-zinc-500"}`}>{i + 1}</span>
-                </td>
-                <td className="p-3 font-medium">
-                  <Link href={`/team/${encodeURIComponent(t.key)}`} className="hover:text-orange-400 hover:underline">{t.team}</Link>
-                </td>
-                <td className="p-3 text-right font-[family-name:var(--font-display)] text-lg font-bold text-orange-400">{t.points}</td>
-                <td className="p-3 text-right text-zinc-400">{t.results.length}</td>
-                <td className="p-3 text-right text-zinc-400">{t.titles}</td>
-                <td className="p-3 text-right text-zinc-400">{t.podiums}</td>
-                <td className="p-3 pr-4 text-right text-zinc-400">{t.best <= 98 ? `#${t.best}` : "—"}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <p className="mb-4 text-sm text-zinc-400">
+        The official <b className="text-zinc-200">KIE Global Leaderboard</b> by Krafton India Esports, ranking BGMI {view} on results across the BGIS, BMPS and Showdown events.
+        Last updated <b className="text-zinc-200">{kie.updated ?? when(kie.edited)}</b>.
+      </p>
+      <RankTable rows={rows} rounds={table.rounds} />
+      {(kie.placement.length > 0 || kie.decay.length > 0) && (
+        <details className="mt-6 rounded-xl border border-white/10 bg-white/[0.03]">
+          <summary className="cursor-pointer select-none px-5 py-3 font-semibold">How the points work</summary>
+          <div className="grid gap-6 border-t border-white/10 px-5 py-4 text-sm text-zinc-400 sm:grid-cols-2">
+            <div>
+              <p className="mb-2 font-semibold text-zinc-300">Points per finish (teams)</p>
+              <ul className="space-y-1">{kie.placement.map(([place, pts]) => <li key={place} className="flex justify-between"><span>Rank {place}</span><b className="text-zinc-200">{pts}</b></li>)}</ul>
+            </div>
+            <div>
+              <p className="mb-2 font-semibold text-zinc-300">Decay (event age in months)</p>
+              <ul className="space-y-1">{kie.decay.map(([months, mult]) => <li key={months} className="flex justify-between"><span>{months} months</span><b className="text-zinc-200">×{mult}</b></li>)}</ul>
+            </div>
+          </div>
+        </details>
+      )}
+    </>
+  );
+}
 
-      <details className="mt-6 rounded-xl border border-white/10 bg-white/[0.03]">
-        <summary className="cursor-pointer select-none px-5 py-3 font-semibold">How this ranking is calculated</summary>
-        <div className="space-y-3 border-t border-white/10 px-5 py-4 text-sm text-zinc-400">
-          <p>
-            Liquipedia has no official ranking for these games, so this is Esportlive&apos;s own. Every S, A and B-tier event
-            finished in the last 12 months whose final standings can be read ({events.length} right now) gives each team
-            points for its final position, multiplied by the event&apos;s tier: S-tier ×{TIER_WEIGHT["1"]}, A-tier ×{TIER_WEIGHT["2"]},
-            B-tier ×{TIER_WEIGHT["3"]}.
-          </p>
-          <p>Position points: {PLACE_POINTS.map((p, i) => `${i + 1}${["st", "nd", "rd"][i] ?? "th"} ${p}`).join(", ")}; every lower place 1.</p>
-          <p className="font-semibold text-zinc-300">Events counted</p>
-          <ul className="list-disc space-y-1 pl-5">
-            {events.map((e) => (
-              <li key={e.title}>
-                <Link href={`/event/${e.title.replaceAll(" ", "_").split("/").map(encodeURIComponent).join("/")}`} className="text-orange-400 hover:underline">{e.name}</Link>
-              </li>
-            ))}
-          </ul>
-        </div>
-      </details>
+// ---- PUBG Mobile: PMGC qualification points ----
+async function PmgcBoard({ region, qual }: { region: string; qual: "pmgc" | "pmwc" }) {
+  const { year, boards } = await getPmgcLatest().catch(() => ({ year: 0, boards: [] }));
+  if (boards.length === 0) return <p className={`${panel} p-6 text-zinc-400`}>The PMGC points couldn&apos;t be loaded right now.</p>;
+
+  const tableOf = (b: (typeof boards)[number]): PointsTable | undefined => (qual === "pmwc" ? b.pmwc : b.pmgc);
+  const selected = boards.find((b) => b.id === region);
+  const sources = selected ? [selected] : boards;
+  const rounds = tableOf(sources.find((b) => tableOf(b)) ?? sources[0])?.rounds ?? [];
+
+  // Rank inside each region (that is what decides qualification), then order by points for the global view.
+  const all = sources.flatMap((b) => {
+    const t = tableOf(b);
+    return t ? t.rows.map((row, i) => ({ row, region: b.label, qualified: i < t.slots })) : [];
+  });
+  if (!selected) all.sort((a, b) => b.row.total - a.row.total);
+  const top = all.slice(0, 50);
+  const names = await wikiLabels("Team", top.map((r) => r.row.key)).catch(() => new Map<string, string>());
+  const logos = await teamLogos(top.map((r) => r.row.key)).catch(() => new Map<string, string>());
+  const rows: Row[] = top.map((r, i) => ({
+    rank: i + 1,
+    key: r.row.key,
+    name: names.get(r.row.key) ?? r.row.key,
+    href: `/team/${encodeURIComponent(r.row.key)}`,
+    logo: logos.get(r.row.key),
+    region: r.region,
+    qualified: r.qualified,
+    row: { ...r.row, parts: rounds.map((_, i2) => r.row.parts[i2] ?? null) },
+  }));
+  const slots = selected ? tableOf(selected)?.slots : undefined;
+  const edited = boards.map((b) => b.edited).sort().at(-1)!;
+
+  return (
+    <>
+      <p className="mb-4 text-sm text-zinc-400">
+        <b className="text-zinc-200">PMGC {year} points: {qual === "pmwc" ? "World Cup" : "Global Championship"} qualification</b>. Points from final placements in the Global Open regional finals
+        {qual === "pmwc" ? " and main event" : ", main events and the World Cup"} decide who qualifies{slots ? <>; the top <b className="text-zinc-200">{slots}</b> in this region qualify</> : ""}.
+        This system covers the global regions (not China, Korea, Japan or India). Updated <b className="text-zinc-200">{when(edited)}</b>.
+      </p>
+      {rows.length === 0 ? (
+        <p className={`${panel} p-6 text-zinc-400`}>No standings published for this selection yet.</p>
+      ) : (
+        <RankTable rows={rows} rounds={rounds} showRegion={!selected} />
+      )}
     </>
   );
 }
 
 export default async function RankingsPage(props: PageProps<"/rankings">) {
+  await connection(); // the current season depends on today's date
   const sp = await props.searchParams;
-  const game = sp.game === "PUBG Mobile" ? "PUBG Mobile" : "BGMI";
+  const get = (k: string) => (typeof sp[k] === "string" ? (sp[k] as string) : "");
+  const board = get("board") === "pmgc" ? "pmgc" : "kie";
+  const view = get("view") === "players" ? "players" : "teams";
+  const qual = get("qual") === "pmwc" ? "pmwc" : "pmgc";
+  const region = get("region") || "global";
+
+  const url = (p: Record<string, string>) => `/rankings?${new URLSearchParams(p)}`;
+  const REGION_CHIPS: [string, string][] = [["global", "Global"], ["southeast-asia", "Southeast Asia"], ["south-asia", "South Asia"], ["eeca", "EECA"], ["mena", "MENA"], ["turkiye", "Türkiye"], ["western-europe", "Western Europe"], ["americas", "Americas"], ["africa", "Africa"]];
 
   return (
     <>
-      <h1 className="font-[family-name:var(--font-display)] text-4xl font-bold tracking-wide sm:text-5xl">Team <span className="text-orange-500">rankings</span></h1>
-      <p className="mt-2 max-w-2xl text-zinc-400">Who is performing best right now, based on the most recent S, A and B-tier results.</p>
-      <div className="mb-6 mt-6 flex flex-wrap gap-2">
-        {GAMES.map(([value, label]) => (
-          <Link key={value} href={`/rankings?game=${encodeURIComponent(value)}`} className={chip(game === value)}>{label}</Link>
+      <h1 className="font-[family-name:var(--font-display)] text-4xl font-bold tracking-wide sm:text-5xl">Official <span className="text-orange-500">rankings</span></h1>
+      <p className="mt-2 max-w-2xl text-zinc-400">The ranking each game&apos;s organiser uses, shown as published on Liquipedia.</p>
+
+      <div className="mb-4 mt-6 grid gap-3 sm:grid-cols-2">
+        {[
+          { id: "kie", game: "BGMI", title: "KIE Global Leaderboard", sub: "Teams and players · Krafton India Esports" },
+          { id: "pmgc", game: "PUBG Mobile", title: "PMGC Points", sub: "By region and global · Global Championship qualification" },
+        ].map((b) => (
+          <Link key={b.id} href={url({ board: b.id })} className={`rounded-xl border p-4 transition ${board === b.id ? "border-orange-500 bg-orange-500/10" : "border-white/10 bg-white/[0.03] hover:border-white/30"}`}>
+            <Chip tone={b.id === "kie" ? "green" : "amber"}>{b.game}</Chip>
+            <div className="mt-2 font-[family-name:var(--font-display)] text-xl font-semibold">{b.title}</div>
+            <div className="text-xs text-zinc-500">{b.sub}</div>
+          </Link>
         ))}
       </div>
-      <Suspense fallback={<Loading label="rankings (calculating from the latest standings)" />}>
-        <Table game={game} />
+
+      <div className="mb-6 flex flex-wrap gap-2">
+        {board === "kie" ? (
+          <>
+            <Link href={url({ board: "kie", view: "teams" })} className={chip(view === "teams")}>Teams</Link>
+            <Link href={url({ board: "kie", view: "players" })} className={chip(view === "players")}>Players</Link>
+          </>
+        ) : (
+          <>
+            <Link href={url({ board: "pmgc", qual: "pmgc", region })} className={chip(qual === "pmgc")}>PMGC qualification</Link>
+            <Link href={url({ board: "pmgc", qual: "pmwc", region })} className={chip(qual === "pmwc")}>PMWC qualification</Link>
+            <span className="mx-1 hidden h-6 w-px bg-white/10 sm:block" />
+            {REGION_CHIPS.map(([id, label]) => <Link key={id} href={url({ board: "pmgc", qual, region: id })} className={chip(region === id)}>{label}</Link>)}
+          </>
+        )}
+      </div>
+
+      <Suspense key={`${board}${view}${qual}${region}`} fallback={<Loading label="rankings" />}>
+        {board === "kie" ? <KieBoard view={view} /> : <PmgcBoard region={region} qual={qual} />}
       </Suspense>
     </>
   );

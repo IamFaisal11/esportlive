@@ -25,3 +25,6 @@ export function tierLabel(tier?: string) {
   const letter = ["S", "A", "B", "C", "D"][Number(tier) - 1];
   return letter ? `${letter}-Tier` : tier ? `Tier ${tier}` : "Tier ?";
 }
+
+// True when `start` (YYYY-MM-DD) is no more than `days` days from now.
+export const startsWithin = (start: string, days: number) => Date.parse(start) <= Date.now() + days * 864e5;

@@ -17,10 +17,12 @@ export default function About() {
       </p>
       <h2>What you can find here</h2>
       <ul>
-        <li>Tournaments from S-tier and A-tier events, with dates, prize pools, locations and status (upcoming, live or finished)</li>
+        <li>Tournaments from S, A and B-tier events, with dates, prize pools, locations and status (upcoming, live or finished)</li>
         <li>Team standings with placement points, eliminations, chicken dinners and per-map breakdowns</li>
         <li>Player rankings and statistics, plus team pages with rosters, roster changes and past results</li>
         <li>Where to watch: official broadcast channels by language, recordings, and watch parties found on YouTube</li>
+        <li>Official rankings: the KIE Global Leaderboard for BGMI and the PMGC points by region for PUBG Mobile</li>
+        <li>Esports news, and player transfers, signings and departures</li>
       </ul>
       <h2>Where the data comes from</h2>
       <p>

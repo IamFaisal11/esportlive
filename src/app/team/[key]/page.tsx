@@ -98,7 +98,7 @@ async function History({ title, fallback }: { title: string; fallback: RosterMem
       ) : (
         <div className="max-h-[28rem] overflow-auto rounded-xl border border-white/10 bg-white/[0.03]">
           <table className="w-full text-left text-sm">
-            <thead className="sticky top-0 bg-[#121214]"><tr><th className={`${th} pl-4`}>Player</th><th className={th}>Name</th><th className={th}>Joined</th><th className={th}>Left</th><th className={th}>Moved to</th></tr></thead>
+            <thead className="sticky top-0 bg-surface"><tr><th className={`${th} pl-4`}>Player</th><th className={th}>Name</th><th className={th}>Joined</th><th className={th}>Left</th><th className={th}>Moved to</th></tr></thead>
             <tbody>
               {h.former.map((m, i) => (
                 <tr key={m.id + i} className="border-t border-white/5 hover:bg-white/5">

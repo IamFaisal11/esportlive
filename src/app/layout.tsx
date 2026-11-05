@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Rajdhani, Inter } from "next/font/google";
+import { ThemeToggle } from "@/components/ThemeToggle";
+import { MoreMenu } from "@/components/MoreMenu";
 import "./globals.css";
 
 const display = Rajdhani({ weight: ["500", "600", "700"], subsets: ["latin"], variable: "--font-display" });
@@ -25,8 +27,10 @@ const Logo = () => (
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en" className={`${display.variable} ${body.variable} h-full antialiased`}>
+    <html lang="en" suppressHydrationWarning className={`${display.variable} ${body.variable} h-full antialiased`}>
       <head>
+        {/* Apply the saved theme before first paint so there is no flash */}
+        <script dangerouslySetInnerHTML={{ __html: `try{var t=localStorage.getItem("theme");if(t==="light"||(!t&&matchMedia("(prefers-color-scheme: light)").matches))document.documentElement.dataset.theme="light"}catch(e){}` }} />
         <meta name="google-adsense-account" content="ca-pub-7470745732799601" />
         {/* Google AdSense: the publisher script (also used to verify the site) */}
         <script
@@ -35,11 +39,11 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           crossOrigin="anonymous"
         />
       </head>
-      <body className="relative min-h-full bg-[#09090b] font-[family-name:var(--font-body)] text-zinc-100">
+      <body className="relative min-h-full bg-background font-[family-name:var(--font-body)] text-zinc-100">
         {/* Soft accent glow plus a faint grid that fades out down the page */}
-        <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[34rem] [background-image:radial-gradient(ellipse_70%_60%_at_50%_-10%,rgba(249,115,22,0.20),transparent),linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] [background-size:auto,48px_48px,48px_48px] [mask-image:linear-gradient(to_bottom,black,transparent)]" />
+        <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[34rem] [background-image:radial-gradient(ellipse_70%_60%_at_50%_-10%,rgba(249,115,22,0.20),transparent),linear-gradient(var(--grid)_1px,transparent_1px),linear-gradient(90deg,var(--grid)_1px,transparent_1px)] [background-size:auto,48px_48px,48px_48px] [mask-image:linear-gradient(to_bottom,black,transparent)]" />
 
-        <header className="sticky top-0 z-20 border-b border-white/5 bg-[#09090b]/80 backdrop-blur-md">
+        <header className="sticky top-0 z-20 border-b border-white/5 bg-background/80 backdrop-blur-md">
           <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4">
             <Link href="/" className="flex items-center gap-2.5 font-[family-name:var(--font-display)] text-2xl font-bold tracking-wide">
               <Logo />
@@ -50,7 +54,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
                 <Link href="/" className="transition hover:text-white">Tournaments</Link>
                 <Link href="/rankings" className="transition hover:text-white">Rankings</Link>
                 <Link href="/news" className="transition hover:text-white">News</Link>
+                <MoreMenu />
               </nav>
+              <ThemeToggle />
               <form action="/search" role="search" className="relative hidden md:block">
                 <input
                   name="q"

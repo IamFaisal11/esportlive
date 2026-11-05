@@ -12,7 +12,7 @@ function Table({ t, ranked }: { t: StatTable; ranked?: boolean }) {
   return (
     <div className="max-h-[28rem] overflow-auto rounded-xl border border-white/10 bg-white/[0.03]">
       <table className="w-full text-left text-sm">
-        <thead className="sticky top-0 bg-[#121214] text-xs uppercase tracking-wider text-zinc-500">
+        <thead className="sticky top-0 bg-surface text-xs uppercase tracking-wider text-zinc-500">
           <tr className="border-b border-white/10">
             <th className="p-3 pl-4">#</th><th className="p-3">Player</th><th className="p-3">Team</th>
             {t.headers.map((h, i) => <th key={h + i} className="p-3 text-right">{h}</th>)}
