@@ -49,12 +49,6 @@ function Details({ hit: h }: { hit: SearchHit }) {
           {h.role && <Chip>{h.role}</Chip>}
         </span>
         {h.country && <span className="mt-1 block truncate text-xs text-zinc-500">{h.country}</span>}
-        {h.teams && h.teams.length > 0 && (
-          <span className="mt-2 block border-t border-white/10 pt-2 text-xs text-zinc-400">
-            {!h.teams[0].leave && <span className="mr-1.5 font-semibold text-emerald-300">Now: {h.teams[0].team}</span>}
-            <span className="block truncate" title="Team changes, oldest first">{[...h.teams].reverse().map((s) => s.team).join(" → ")}</span>
-          </span>
-        )}
       </>
     );
   return (

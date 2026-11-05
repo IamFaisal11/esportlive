@@ -459,7 +459,6 @@ export async function getBroadcast(title: string): Promise<{ streams: Broadcast[
 
 export type TeamStint = { join: string; leave?: string; team: string };
 export type SearchHit = {
-  teams?: TeamStint[];
   kind: "tournament" | "team" | "player";
   title: string;
   sub: string;
@@ -514,8 +513,6 @@ export async function searchSite(q: string): Promise<SearchHit[]> {
       });
     }
   }
-  // Team changes for the best-matching players (one lookup each)
-  await Promise.all(hits.filter((h) => h.kind === "player").slice(0, 3).map(async (h) => { h.teams = await getPlayerTeams(h.title).catch(() => []); }));
   // Pictures: logos for tournaments and teams, photos for players (one batched lookup)
   const urls = await fileUrls([...files.values()].filter(Boolean)).catch(() => new Map<string, string>());
   for (const h of hits) {
