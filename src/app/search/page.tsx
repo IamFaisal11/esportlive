@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import Link from "next/link";
 import { Suspense } from "react";
 import { Chip, Loading, panel, SectionTitle } from "@/components/ui";
+import { dateRange, status, tierLabel } from "@/lib/format";
 import { searchSite, type SearchHit } from "@/lib/liquipedia";
 
 export const instant = false; // search results are fetched per request
@@ -15,6 +17,53 @@ const href = (h: SearchHit) =>
   h.kind === "tournament" ? `/event/${h.title.replaceAll(" ", "_").split("/").map(encodeURIComponent).join("/")}` : `/${h.kind}/${encodeURIComponent(h.title)}`;
 
 const GROUPS: [SearchHit["kind"], string][] = [["tournament", "Tournaments"], ["team", "Teams"], ["player", "Players"]];
+
+// Logo for tournaments and teams (on a dark plate: Liquipedia's dark-theme logos are white), photo for players.
+function Thumb({ hit }: { hit: SearchHit }) {
+  const player = hit.kind === "player";
+  const box = player ? "size-16 rounded-full" : "logo-plate size-16 rounded-xl p-1.5";
+  if (!hit.image)
+    return <span className={`flex shrink-0 items-center justify-center bg-white/10 font-[family-name:var(--font-display)] text-xl font-bold text-zinc-500 ${player ? "size-16 rounded-full" : "size-16 rounded-xl"}`}>{hit.title.slice(0, 2).toUpperCase()}</span>;
+  return <Image src={hit.image} alt="" width={64} height={64} unoptimized={hit.image.endsWith(".svg")} className={`shrink-0 bg-white/5 object-contain ${box} ${player ? "object-cover object-top" : ""}`} />;
+}
+
+function Details({ hit: h }: { hit: SearchHit }) {
+  if (h.kind === "tournament") {
+    const st = h.start ? status(h.start, h.end ?? h.start) : undefined;
+    return (
+      <>
+        <span className="mt-1 flex flex-wrap items-center gap-1.5">
+          {st && <Chip tone={st === "live" ? "red" : st === "upcoming" ? "blue" : "neutral"}>{st}</Chip>}
+          {h.tier && <Chip>{tierLabel(h.tier)}</Chip>}
+        </span>
+        <span className="mt-1 block truncate text-xs text-zinc-500">{[h.start && dateRange(h.start, h.end ?? h.start), h.place].filter(Boolean).join(" · ")}</span>
+      </>
+    );
+  }
+  if (h.kind === "player")
+    return (
+      <>
+        {h.realName && <span className="block truncate text-sm text-zinc-400">{h.realName}</span>}
+        <span className="mt-1 flex flex-wrap items-center gap-1.5">
+          <Chip tone="amber">Player</Chip>
+          {h.role && <Chip>{h.role}</Chip>}
+        </span>
+        {h.country && <span className="mt-1 block truncate text-xs text-zinc-500">{h.country}</span>}
+        {h.teams && h.teams.length > 0 && (
+          <span className="mt-2 block border-t border-white/10 pt-2 text-xs text-zinc-400">
+            {!h.teams[0].leave && <span className="mr-1.5 font-semibold text-emerald-300">Now: {h.teams[0].team}</span>}
+            <span className="block truncate" title="Team changes, oldest first">{[...h.teams].reverse().map((s) => s.team).join(" → ")}</span>
+          </span>
+        )}
+      </>
+    );
+  return (
+    <>
+      <span className="mt-1 flex"><Chip tone="green">Team</Chip></span>
+      {h.sub && <span className="mt-1 block truncate text-xs text-zinc-500">{h.sub}</span>}
+    </>
+  );
+}
 
 async function Results({ q }: { q: string }) {
   let hits: SearchHit[];
@@ -31,17 +80,17 @@ async function Results({ q }: { q: string }) {
     const rows = hits.filter((h) => h.kind === kind).slice(0, 8);
     if (rows.length === 0) return null;
     return (
-      <section key={kind}>
+      <section key={kind} className="mt-10">
         <SectionTitle>{label}</SectionTitle>
-        <ul className="grid gap-3 sm:grid-cols-2">
+        <ul className={`grid gap-3 sm:grid-cols-2 ${kind === "player" ? "lg:grid-cols-3" : ""}`}>
           {rows.map((h) => (
             <li key={h.title}>
-              <Link href={href(h)} className="group flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.03] p-4 transition hover:border-orange-500/60">
-                <span className="min-w-0">
-                  <span className="block truncate font-medium transition group-hover:text-orange-400">{h.title.replace(/\/(20\d\d)/, " $1").replaceAll("/", " · ")}</span>
-                  {h.sub && <span className="block truncate text-xs text-zinc-500">{h.sub}</span>}
+              <Link href={href(h)} className="group flex h-full items-center gap-4 rounded-xl border border-white/10 bg-gradient-to-b from-white/[0.05] to-white/[0.02] p-4 transition hover:-translate-y-0.5 hover:border-orange-500/60">
+                <Thumb hit={h} />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-[family-name:var(--font-display)] text-xl font-semibold leading-tight transition group-hover:text-orange-400">{h.title.replace(/\/(20\d\d)/, " $1").replaceAll("/", " · ")}</span>
+                  <Details hit={h} />
                 </span>
-                <Chip>{kind}</Chip>
               </Link>
             </li>
           ))}

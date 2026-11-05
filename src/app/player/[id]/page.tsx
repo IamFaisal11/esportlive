@@ -5,7 +5,8 @@ import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { prizeValue, ResultsTable, usd } from "@/components/ResultsTable";
 import { Chip, Loading, SectionTitle, Stat } from "@/components/ui";
-import { getPlayer, getPlayerResults } from "@/lib/liquipedia";
+import { TeamChanges } from "@/components/TeamChanges";
+import { getPlayer, getPlayerResults, getPlayerTeams } from "@/lib/liquipedia";
 
 export const instant = false; // player data is fetched from Liquipedia per request
 
@@ -89,6 +90,10 @@ async function Career({ title }: { title: string }) {
   );
 }
 
+async function Changes({ title }: { title: string }) {
+  return <TeamChanges stints={await getPlayerTeams(title).catch(() => [])} />;
+}
+
 export default async function PlayerPage(props: PageProps<"/player/[id]">) {
   await connection(); // the player's age depends on the current time, so render per request
   const { id } = await props.params;
@@ -152,6 +157,11 @@ export default async function PlayerPage(props: PageProps<"/player/[id]">) {
           </div>
         </div>
       </section>
+
+      <SectionTitle>Team changes</SectionTitle>
+      <Suspense fallback={<Loading label="team changes" />}>
+        <Changes title={player.title} />
+      </Suspense>
 
       <SectionTitle>Career</SectionTitle>
       <Suspense fallback={<Loading label="results" />}>

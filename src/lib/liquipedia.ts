@@ -457,7 +457,16 @@ export async function getBroadcast(title: string): Promise<{ streams: Broadcast[
   return { streams: parseStreams(text), vods: parseVods(text) };
 }
 
-export type SearchHit = { kind: "tournament" | "team" | "player"; title: string; sub: string };
+export type TeamStint = { join: string; leave?: string; team: string };
+export type SearchHit = {
+  teams?: TeamStint[];
+  kind: "tournament" | "team" | "player";
+  title: string;
+  sub: string;
+  image?: string;
+  // card details read from the infobox
+  name?: string; country?: string; role?: string; start?: string; end?: string; tier?: string; place?: string; realName?: string;
+};
 
 // Wiki-wide search: title-prefix matches plus full-text matches, each classified by its infobox (one call for all of them).
 export async function searchSite(q: string): Promise<SearchHit[]> {
@@ -475,22 +484,59 @@ export async function searchSite(q: string): Promise<SearchHit[]> {
   const data = await api(`action=query&prop=revisions&rvprop=content&rvslots=main&rvsection=0&titles=${encodeURIComponent(titles.join("|"))}`);
   const text = new Map((data.query.pages as Page[]).map((p) => [p.title, (p.revisions?.[0].slots.main.content ?? "").replace(/<!--[\s\S]*?-->/g, "")]));
   const hits: SearchHit[] = [];
+  const files = new Map<string, string>();
+  const words = term.toLowerCase().split(/\s+/).filter(Boolean);
   for (const title of titles) {
     const t = text.get(title) ?? "";
+    // Full-text search also returns pages that only mention the word somewhere in their body (a tournament's player list);
+    // keep a page only if its title or infobox contains every word searched for.
+    const haystack = `${title} ${t}`.toLowerCase();
+    if (!words.every((w) => haystack.includes(w))) continue;
     // value of |key=... inside the infobox that starts at `box` (a plain string, so the backslashes are doubled)
     const field = (box: string, key: string) => t.slice(Math.max(0, t.indexOf(box))).match(new RegExp("\\|" + key + "=([^\\n|]*)"))?.[1]?.trim() ?? "";
     if (t.includes("{{Infobox league")) {
       const dates = [field("Infobox league", "sdate"), field("Infobox league", "edate")].filter(Boolean).join(" → ");
-      hits.push({ kind: "tournament", title, sub: [dates, field("Infobox league", "country")].filter(Boolean).join(" · ") });
+      const f = (k: string) => field("Infobox league", k);
+      files.set(title, f("imagedark") || f("imagedarkmode") || f("image"));
+      hits.push({
+        kind: "tournament", title, sub: [dates, f("country")].filter(Boolean).join(" · "),
+        name: f("name") || undefined, start: f("sdate") || undefined, end: f("edate") || undefined, tier: f("liquipediatier") || undefined,
+        place: [f("city"), f("country")].filter(Boolean).join(", ") || undefined,
+      });
     } else if (t.includes("{{Infobox team")) {
-      hits.push({ kind: "team", title, sub: [field("Infobox team", "location"), field("Infobox team", "region")].filter(Boolean).join(" · ") });
+      files.set(title, field("Infobox team", "imagedark") || field("Infobox team", "image"));
+      hits.push({ kind: "team", title, sub: [field("Infobox team", "location"), field("Infobox team", "region")].filter(Boolean).join(" · "), place: field("Infobox team", "location") || undefined });
     } else if (t.includes("{{Infobox player")) {
-      hits.push({ kind: "player", title, sub: [field("Infobox player", "country"), field("Infobox player", "role")].filter(Boolean).join(" · ") });
+      files.set(title, field("Infobox player", "image"));
+      hits.push({
+        kind: "player", title, sub: [field("Infobox player", "country"), field("Infobox player", "role")].filter(Boolean).join(" · "),
+        country: field("Infobox player", "country") || undefined, role: field("Infobox player", "role") || undefined, realName: field("Infobox player", "name") || undefined,
+      });
     }
+  }
+  // Team changes for the best-matching players (one lookup each)
+  await Promise.all(hits.filter((h) => h.kind === "player").slice(0, 3).map(async (h) => { h.teams = await getPlayerTeams(h.title).catch(() => []); }));
+  // Pictures: logos for tournaments and teams, photos for players (one batched lookup)
+  const urls = await fileUrls([...files.values()].filter(Boolean)).catch(() => new Map<string, string>());
+  for (const h of hits) {
+    const u = urls.get(files.get(h.title) ?? "");
+    if (u) h.image = u;
   }
   return hits;
 }
 
+
+// A player's team changes from {{TeamHistoryAuto}} (Liquipedia's transfer database), newest first. Leave is empty while the player is still there.
+export async function getPlayerTeams(title: string): Promise<TeamStint[]> {
+  const html = (await expand(title, "{{TeamHistoryAuto}}")).replace(/<ref[\s\S]*?(<\/ref>|\/>)/g, "");
+  const out: TeamStint[] = [];
+  for (const m of html.matchAll(/<tr>\s*<td[^>]*>([\s\S]*?)<\/td>\s*<td[^>]*>([\s\S]*?)<\/td>\s*<td[^>]*>([\s\S]*?)<\/td>/g)) {
+    const join = m[1].match(/\d{4}-\d\d-\d\d/)?.[0];
+    const team = wikiText(m[3]).trim();
+    if (join && team) out.push({ join, leave: m[2].match(/\d{4}-\d\d-\d\d/)?.[0], team });
+  }
+  return out.sort((a, b) => b.join.localeCompare(a.join));
+}
 
 // Raw wikitext and last-edit time of several pages in one call (used for Liquipedia's points / leaderboard pages).
 export async function getWikiPages(titles: string[]): Promise<Map<string, { text: string; edited: string }>> {
